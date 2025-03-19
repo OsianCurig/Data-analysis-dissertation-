@@ -361,6 +361,7 @@ ci_df <- boot_df_all %>%
     Upper_CI = quantile(Estimate, 0.975)
   )
 
+#Something has changed
 # Plot
 ggplot(boot_df_all, aes(x = Estimate, color = Measure, fill = Measure)) +
   geom_density(size = 0.8, alpha = 0.4) +
