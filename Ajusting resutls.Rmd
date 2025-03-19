@@ -1,0 +1,390 @@
+---
+title: "Ajusting the graph"
+author: "2643018s"
+date: "2025-02-07"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(lmerTest)
+
+data <- read_csv("task_error_data.csv") %>%
+  na.omit()
+```
+```{r}
+library(tidyverse)
+
+# 1A. Convert wide columns (FC_error, FM_error, GC_error, GM_error) to long
+data_long <- data %>%
+  pivot_longer(
+    cols = c(FC_error, FM_error, GC_error, GM_error),
+    names_to = "temp",
+    values_to = "error"
+  ) %>%
+  mutate(
+    group = if_else(str_detect(temp, "^F"), "Fine", "Gross"),
+    condition = if_else(str_detect(temp, "C"), "Control", "Experimental")
+  ) %>%
+  select(-temp)
+
+# 1B. (Optional) Handle duplicates if needed, e.g., by averaging:
+data_long_clean <- data_long %>%
+  group_by(Participants, group, condition) %>%
+  summarize(error = mean(error, na.rm = TRUE), .groups = "drop")
+
+# 1C. Pivot to wide format: one row per (Participants + group), columns = Control, Experimental
+data_wide <- data_long_clean %>%
+  pivot_wider(names_from = condition, values_from = error)
+
+
+
+
+ggplot(data_wide, aes(x = Control, y = Experimental, color = group)) +
+  # Connect Fine and Gross points for each participant
+  geom_line(aes(group = group), size = 1, alpha = 0.8) +
+  
+  # Plot the points themselves
+  geom_point(aes(shape = group), size = 3, stroke = 1) +
+  
+  # Custom shapes and colors
+  scale_shape_manual(values = c("Fine" = 16, "Gross" = 17)) +
+  scale_color_manual(values = c("Fine" = "darkgreen", "Gross" = "orange")) +
+  
+  # Optional reference line (diagonal)
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  
+  # Labels and theme
+  labs(
+    title = "Control vs. Experimental Error Scores (Fine vs. Gross)",
+    x = "Control Error Score",
+    y = "Experimental Error Score"
+  ) +
+  theme_minimal()
+
+
+
+
+
+
+
+
+```
+
+
+
+```{r This has worked }
+
+data_long <- data %>%
+  pivot_longer(cols = c(FC_error, FM_error, GC_error, GM_error),
+               names_to = "temp",
+               values_to = "error") %>%
+  mutate(
+    group = if_else(str_detect(temp, "F"), "Fine", "Gross"),
+    condition = if_else(str_detect(temp, "C"), "Control", "Experimental")
+  ) %>%
+  select( - temp)
+
+rdata_long <- data_long %>%
+  pivot_wider(names_from = condition, values_from = error)
+
+
+# Assuming 'data_long' has the following columns:
+# participant, group (with values "Fine" or "Gross"), 
+# condition (with values "Control" or "Experimental"), and error
+
+scatter_combined <- ggplot(data_long, aes(x = condition, y = error, group = Participants, color = group)) +
+  geom_line(size = 1, alpha = 0.8) +
+  geom_point(aes(shape = condition), size = 3, stroke = 1) +
+  facet_wrap(~ group) +
+  theme_bw() +
+  scale_shape_manual(values = c("Control" = 16, "Experimental" = 15)) +  # 16 = circle, 15 = square
+  scale_color_manual(values = c("Fine" = "darkgreen", "Gross" = "orange")) +
+  labs(#title = "Paired Observations by Group",
+       x = "Condition",
+       y = "Error Score") +
+  theme(legend.position = "none")
+
+scatter_combined
+
+##scatterplot 
+
+# 1. Convert your wide columns (FC_error, FM_error, GC_error, GM_error) to long format
+data_long <- data %>%
+  pivot_longer(
+    cols = c(FC_error, FM_error, GC_error, GM_error),
+    names_to = "temp",
+    values_to = "error"
+  ) %>%
+  mutate(
+    group = if_else(str_detect(temp, "^F"), "Fine", "Gross"),
+    trial = if_else(str_detect(temp, "C"), "Control", "Experimental")
+  )
+
+
+
+# 2. Aggregate in case of duplicates, ensuring each participant-group-trial has a single value
+data_long_clean <- data_long %>%
+  group_by(Participants, group, trial) %>%
+  summarize(error = mean(error, na.rm = TRUE), .groups = "drop")
+
+# 3. Pivot so each row has 'Control' and 'Experimental' for a given participant-group
+#    This yields 2 rows per participant (one for Fine, one for Gross), with columns:
+#    Participants, group, Control, Experimental
+data_wide <- data_long_clean %>%
+  pivot_wider(
+    names_from = c(trial, group),
+    values_from = error
+  ) %>%
+  group_by(Participants) 
+
+# 4. Plot Control vs. Experimental, colored by group (Fine or Gross)
+ggplot(data_wide, aes(x = Control, y = Experimental, color = group)) +
+  geom_point(size = 3) +
+  geom_line(aes(group = Participants), size = 1, alpha = 0.8) +
+  scale_color_manual(values = c("Fine" = "darkgreen", "Gross" = "orange")) +
+  #geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(
+    title = "Control vs. Experimental Error Scores by Group",
+    x = "Control Error Score",
+    y = "Experimental Error Score"
+  ) +
+  theme_minimal()
+
+
+
+library(ggplot2)
+
+# Assuming your wide-format data (data_wide) has the following columns:
+# Participants, Control_Fine, Experimental_Fine, Control_Gross, Experimental_Gross
+
+ggplot(data_wide) +
+  # Plot Fine group points
+  geom_point(aes(x = Control_Fine, y = Experimental_Fine), 
+             color = "darkgreen", shape = 16, size = 3) +
+  # Plot Gross group points
+  geom_point(aes(x = Control_Gross, y = Experimental_Gross), 
+             color = "orange", shape = 17, size = 3) +
+  # Connect Fine and Gross points for each participant
+  geom_segment(aes(x = Control_Fine, y = Experimental_Fine, 
+                   xend = Control_Gross, yend = Experimental_Gross),
+               color = "black", linetype = "dashed", size = 0.8) +
+  
+  labs(title = "Control vs. Experimental Error Scores by Group",
+       x = "Control Error Score",
+       y = "Experimental Error Score") +
+  theme_minimal()
+
+
+library(tidyverse)
+
+
+
+
+
+
+#ggsave("fig1.1.jpg", width = 8, height = 6, dpi = 300)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+model_poisson <- glmer(
+  error ~ group * condition + (1 | Participants),
+  data = data_long,
+  family = poisson(link = "log")
+)
+summary(model_poisson)
+
+```
+A GLMM with a Poisson distribution and a log link was used to examine the effects of condition on postural error scores, with random intercepts for participants.The model demonstrated an acceptable fit (AIC = 531.7, BIC = 545.9, log-likelihood = -260.8). The random intercept for Participants was included to account for individual differences, which had a variance of 0.03 (SD = 0.17). This suggests that between-subject variability in error rates was minimal. Scaled residuals ranged from -2.28 to 1.75, indicating no major deviations from parametric model assumptions.
+
+A significant difference between the postural error scores was identified between the control condition and the experimental condition for both fine (Estimate = 0.40, SE = 0.13, z = 3.15, p = .002), and gross postural control (Estimate = 0.60, SE = 0.21, z = 2.86, p = .004). The difference between control and experimental condition is directional, with an increase in postural error in the experimental condition when the Stroop task is introduced in comparison to control condition with no Stroop task ( Fine r = -.74, Gross r = -.79). Therefore, the introduction of the cognitive strain through the Stroop task caused an increase in postural error both for fine and gross movements.
+
+
+The difference between fine and gross postural groups was not significant (Estimate = 0.12, SE = 0.13, z = 0.88, p = .38), suggesting that overall error rates did not significantly differ between Fine and Gross postural motor tasks.These results indicate that the effect of the cognitive task on error scores did not differ significantly between fine and gross postural control tasks.There was a negative correlation between the fine and gross groups  (r = -0.69), suggesting that difference in error rates were slightly higher in the Gross condition compared to the Fine condition.These results indicate that the effect of the cognitive task on error scores did not differ significantly between fine and gross postural control tasks, however, the effect of cognitive strain was slightly stronger on gross postural control. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r bootstrap}
+
+set.seed(21)
+
+# Assume rdata_long has columns: Participants, group, Control, Experimental
+# Split data into Fine and Gross groups
+rdata_fine <- rdata_long %>% filter(group == "Fine")
+rdata_gross <- rdata_long %>% filter(group == "Gross")
+
+# Define bootstrap parameters
+nboot <- 10000
+np_fine <- nrow(rdata_fine)
+np_gross <- nrow(rdata_gross)
+
+# Function to perform hierarchical bootstrap for one group
+bootstrap_group <- function(data, np, nboot) {
+  # Create a matrix of bootstrap indices for participants
+  bootid <- matrix(sample(np, np * nboot, replace = TRUE), nrow = nboot)
+  # Allocate a matrix to store bootstrap results:
+  # Column 1: 20% trimmed mean for Control, 
+  # Column 2: 20% trimmed mean for Experimental,
+  # Column 3: 20% trimmed mean difference (Experimental - Control)
+  bootres <- matrix(NA, nrow = nboot, ncol = 3)
+  
+  for (B in 1:nboot) {
+    # Sample participants with replacement for this bootstrap iteration
+    boot_sample <- data[bootid[B, ], ]
+    # Compute the 20% trimmed means for Control and Experimental conditions
+    boot_control <- mean(boot_sample$Control, trim = 0.2)
+    boot_experimental <- mean(boot_sample$Experimental, trim = 0.2)
+    boot_diff <- boot_experimental - boot_control
+    # Store the results
+    bootres[B, 1] <- boot_control
+    bootres[B, 2] <- boot_experimental
+    bootres[B, 3] <- boot_diff
+  }
+  return(bootres)
+}
+
+# Run bootstrap for each group
+bootres_fine <- bootstrap_group(rdata_fine, np_fine, nboot)
+bootres_gross <- bootstrap_group(rdata_gross, np_gross, nboot)
+
+# Compute the between-group difference for each bootstrap iteration:
+# Difference (Fine - Gross) for each measure:
+bootres_between <- cbind(
+  Control_Diff = bootres_fine[, 1] - bootres_gross[, 1],
+  Experimental_Diff = bootres_fine[, 2] - bootres_gross[, 2],
+  Difference_Diff = bootres_fine[, 3] - bootres_gross[, 3]
+)
+
+# I dont want this ^ I want it so that its Fine_diff = bootres_experiental - bootstres_control,
+
+
+```
+
+```{r Summary Statistics}
+# Summary statistics for Fine group difference (Experimental - Control)
+fine_diff <- bootres_fine[, 3]
+fine_trimmed_mean <- mean(fine_diff, trim = 0.2)
+fine_sd <- sd(fine_diff)
+fine_ci <- quantile(fine_diff, probs = c(0.025, 0.975), type = 6)
+p_fine <- 2 * min(mean(fine_diff < 0), mean(fine_diff > 0))
+
+# Summary statistics for Gross group difference (Experimental - Control)
+gross_diff <- bootres_gross[, 3]
+gross_trimmed_mean <- mean(gross_diff, trim = 0.2)
+gross_sd <- sd(gross_diff)
+gross_ci <- quantile(gross_diff, probs = c(0.025, 0.975), type = 6)
+p_gross <- 2 * min(mean(gross_diff < 0), mean(gross_diff > 0))
+
+# Summary statistics for the Between-Group Difference (Fine Difference - Gross Difference)
+between_diff <- bootres_between[, 3]
+between_trimmed_mean <- mean(between_diff, trim = 0.2)
+between_sd <- sd(between_diff)
+between_ci <- quantile(between_diff, probs = c(0.025, 0.975), type = 6)
+p_between <- 2 * min(mean(between_diff < 0), mean(between_diff > 0))
+
+# Print the results
+cat("Fine Group Difference (20% trimmed):\n")
+cat("  Mean =", fine_trimmed_mean, "\n")
+cat("  SD   =", fine_sd, "\n")
+cat("  95% CI =", fine_ci, "\n")
+cat("  p-value =", p_fine, "\n\n")
+
+cat("Gross Group Difference (20% trimmed):\n")
+cat("  Mean =", gross_trimmed_mean, "\n")
+cat("  SD   =", gross_sd, "\n")
+cat("  95% CI =", gross_ci, "\n")
+cat("  p-value =", p_gross, "\n\n")
+
+cat("Between-Group Difference (20% trimmed):\n")
+cat("  Mean =", between_trimmed_mean, "\n")
+cat("  SD   =", between_sd, "\n")
+cat("  95% CI =", between_ci, "\n")
+cat("  p-value =", p_between, "\n")
+
+
+
+```
+
+
+
+```{r}
+# Create data frames for the within-group bootstrap results
+boot_df_fine <- data.frame(
+  Estimate = bootres_fine[, 3],
+  Measure = "Fine Difference"
+)
+boot_df_gross <- data.frame(
+  Estimate = bootres_gross[, 3],
+  Measure = "Gross Difference"
+)
+
+# Create a data frame for the between-group differences
+boot_df_between <- data.frame(
+  Estimate = bootres_between[, 3],
+  Measure = "Between-Group Difference"
+)
+
+# Combine all into one data frame for plotting
+boot_df_all <- bind_rows(boot_df_fine, boot_df_gross, boot_df_between)
+boot_df_all$Measure <- factor(boot_df_all$Measure, levels = c("Fine Difference", "Gross Difference", "Between-Group Difference"))
+
+
+
+```
+
+```{r}
+# Calculate 95% confidence intervals
+ci_df <- boot_df_all %>%
+  group_by(Measure) %>%
+  summarise(
+    Mean = mean(Estimate),
+    Lower_CI = quantile(Estimate, 0.025),
+    Upper_CI = quantile(Estimate, 0.975)
+  )
+
+# Plot
+ggplot(boot_df_all, aes(x = Estimate, color = Measure, fill = Measure)) +
+  geom_density(size = 0.8, alpha = 0.4) +
+  # Vertical line for mean
+  geom_vline(data = ci_df, aes(xintercept = Mean), color = "black", 
+             linetype = "dashed", size = .8) +
+  # Confidence intervals as horizontal segments
+  geom_segment(data = ci_df, aes(x = Lower_CI, xend = Upper_CI, y = 0, yend = 0), color = "black",
+               size = 3, lineend = "round") +
+  facet_wrap(~ Measure, scales = "free_x") +
+  scale_color_manual(values = c("Fine Difference" = "darkgreen", 
+                                "Gross Difference" = "orange", 
+                                "Between-Group Difference" = "blue")) +
+  scale_fill_manual(values = c("Fine Difference" = "darkgreen", 
+                               "Gross Difference" = "orange", 
+                               "Between-Group Difference" = "blue")) +
+  labs(#title = "Bootstrap Distributions of 20% Trimmed Means (Differences)",
+       x = "Bootstrap Estimate (Error Difference)",
+       y = "Density") +
+  theme(legend.position = "none") 
+
+ggsave("fig2_high_boot.jpg", width = 8, height = 6, dpi = 300)
+```
+
+
+
+

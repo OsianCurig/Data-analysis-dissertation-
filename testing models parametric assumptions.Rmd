@@ -1,0 +1,61 @@
+---
+title: "Parametrical testing"
+author: "2643018s"
+date: "2025-02-04"
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)  # Load package
+
+
+data <- read_csv("task_error_data.csv") %>%
+  na.omit()
+```
+
+
+
+
+```{r Fine postural control }
+#Fine
+# changing variable structure 
+dat_fine <- data %>%
+  mutate(
+    Fine_control = FC_error,
+    Fine_experimental = FM_error) %>%
+  select(Participants, Fine_control, Fine_experimental)
+
+
+# Reshape the data to long format
+dat_long_fine <- dat_fine %>%
+  gather(key = "Condition", value = "Score", Fine_control, Fine_experimental) %>%
+  mutate(PosturalType = recode(Condition, 
+                               Fine_control = "control", 
+                               Fine_experimental = "experimental"))
+
+# Refit model with p-values
+model_fine <- lmer(Score ~ Condition + (1 | Participants), 
+               data = dat_long_fine, 
+               REML = FALSE)  # REML=FALSE for likelihood-based comparisons
+
+
+
+
+#Linearity: Relationship is assumed to be linear 
+plot(model_fine, which = 1) 
+
+#Indipendent of of residuals and noramility of residuals 
+plot(model_fine, which = 2)
+
+# Homoscedasticity: Homogeneity of variance, meaning that the spread of residuals is constant across levels of predictors.
+plot(model_fine, which = 3)
+
+
+#Normality of variables 
+ggplot(dat_fine, aes( x = Fine_experimental)) +
+ geom_histogram()
+```
+

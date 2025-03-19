@@ -1,0 +1,62 @@
+---
+title: "Data analysis for Methods"
+author: "2643018s"
+date: "2025-01-27"
+output: html_document
+---
+```{r}
+dat  <- read_csv("task_error_data.csv") %>%
+  na.omit()
+```
+
+
+```{r Descriptive stats }
+library(tidyverse)
+
+# Calculate mean and standard deviation for Participants
+Age_stats <- dat %>% 
+  summarise(mean_participants = mean(Age),
+    sd_participants = sd(Age))
+
+# Count the number of each gender
+gender_count <- dat %>%
+  count(Gender)
+
+```
+
+```{r Power Analyis}
+library(pwr)
+
+pwr.t.test(n = 32, d = 0.5, sig.level = 0.05, type = "paired", alternative = "two.sided")
+
+```
+
+```{r}
+
+# Reshape the data to long format
+data_long <- data %>%
+  gather(key = "Condition", value = "Error", FC_error, GC_error, FM_error, GM_error) %>%
+  mutate(
+    PosturalType = case_when(
+      Condition %in% c("FC_error", "FM_error") ~ "Fine",
+      Condition %in% c("GC_error", "GM_error") ~ "Gross"
+    ),
+    TaskType = case_when(
+      Condition %in% c("FC_error", "GC_error") ~ "Control",
+      Condition %in% c("FM_error", "GM_error") ~ "Experimental"
+    )
+  )
+
+# Calculate mean and interquartile range (IQR) for each condition
+summary_stats <- data_long %>%
+  group_by(PosturalType, TaskType) %>%
+  summarise(
+    Mean = mean(Error, na.rm = TRUE),
+    Standard_Deviation = sd(Error, na.rm = TRUE)  # Interquartile Range
+  )
+
+# Print results
+print(summary_stats)
+
+```
+

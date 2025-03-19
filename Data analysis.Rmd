@@ -1,0 +1,445 @@
+---
+title: "Data Analysis"
+author: "2643018s"
+date: "2025-01-27"
+output: html_document
+---
+
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)  # Load package
+
+
+data <- read_csv("task_error_data.csv") %>%
+  na.omit()
+  
+```
+
+
+***Answering hypothesis 1: The introduction of a cognitive task will decrease performance scores for both fine and gross postural control tasks.***
+
+
+*Sorting the data* 
+
+```{r}
+
+# Reshape the data to long format
+data_long <- data %>%
+  gather(key = "Condition", value = "Error", FC_error, GC_error, FM_error, GM_error) %>%
+  mutate(
+    PosturalType = case_when(
+      Condition %in% c("FC_error", "FM_error") ~ "Fine",
+      Condition %in% c("GC_error", "GM_error") ~ "Gross"
+    ),
+    TaskType = case_when(
+      Condition %in% c("FC_error", "GC_error") ~ "Control",
+      Condition %in% c("FM_error", "GM_error") ~ "Experimental"
+    )
+  )
+
+
+# Visualize the error rates for Fine and Gross Postural Tasks by Task Type (Control vs Experimental)
+ggplot(data_long, aes(x = TaskType, y = Error, fill = PosturalType)) +
+  #geom_violin(trim = FALSE, alpha = 0.5) +
+  geom_boxplot(alpha = 0.5, outlier.shape = NA) + 
+  geom_jitter(aes(color = PosturalType), width = 0.2, size = 2, alpha = 0.9) + 
+  facet_wrap(~ PosturalType) + 
+  scale_fill_manual(values = c("Fine" = "darkgreen", "Gross" = "orange")) +  
+  scale_color_manual(values = c("Fine" = "darkgreen", "Gross" = "orange")) +  
+  theme_minimal() +
+  labs(#title = "Error Rates by Task Type and Postural Task",
+       x = "Task Type",
+       y = "Error Rate") +
+  theme(legend.position = "top")  
+
+ggsave("fig1_boxplot.jpg", width = 8, height = 6, dpi = 300)
+
+
+```
+*GLMM Fine postural control*
+
+*Results:* The Fine experimental condition scored significantly higher on the postural error task compared to the Fine control condition (t = 6.39, Estimate = 1.59, p < .001). 
+
+```{r, warning=FALSE}
+#Fine
+# changing variable structure 
+dat_fine <- data %>%
+  mutate(
+    Fine_control = FC_error,
+    Fine_experimental = FM_error) %>%
+  select(Participants, Fine_control, Fine_experimental)
+
+
+# Reshape the data to long format
+dat_long_fine <- dat_fine %>%
+  gather(key = "Condition", value = "Score", Fine_control, Fine_experimental) %>%
+  mutate(PosturalType = recode(Condition, 
+                               Fine_control = "control", 
+                               Fine_experimental = "experimental"))
+
+# Refit model with p-values
+model_fine <- lmer(Score ~ Condition + (1 | Participants), 
+               data = dat_long_fine, 
+               REML = FALSE)  # REML=FALSE for likelihood-based comparisons
+
+# Get p-values in summary output
+summary(model_fine)
+
+
+
+```
+
+*GLMM Gross postural control*
+
+```{r, warning=FALSE}
+
+# changing variable structure 
+dat_gross <- data %>%
+  mutate(
+    Gross_control = GC_error,
+    Gross_experimental = GM_error) %>%
+  select(Participants, Gross_control, Gross_experimental)
+
+
+# Reshape the data to long format
+dat_long_gross <- dat_gross %>%
+  gather(key = "Condition", value = "Score", Gross_control, Gross_experimental) %>%
+  mutate(PosturalType = recode(Condition, 
+                               Gross_control = "control", 
+                               Gross_experimental = "experimental"))
+
+
+# GLMM for fine postural 
+model_gross <- lmer(Score ~ Condition + (1 | Participants), 
+               data = dat_long_gross)
+
+summary(model_gross)
+
+```
+
+*Fine Model*
+
+
+```{r, warning=FALSE}
+
+set.seed(250)
+
+nboot <- 1000
+
+# Create a vector to store the bootstrapped estimates (Fixed effect for PosturalType)
+boot.fixed.fine <- numeric(nboot)
+
+# Run the bootstrap procedure
+for (i in 1:nboot) {
+  # Resample the data with replacement
+  samp.dat.fine <- dat_long_fine[sample(1:nrow(dat_long_fine), nrow(dat_long_fine), replace = TRUE), ]
+  
+  # Fit the GLMM model to the resampled data
+  model_fine <- lmer(Score ~ Condition + (1 | Participants), 
+                      data = samp.dat.fine)
+  
+  # Extract the fixed effect for Condition (assuming it's the second effect)
+  boot.fixed.fine[i] <- fixef(model_fine)[2]
+}
+
+# Convert the bootstrap results to a data frame
+bootf_results_df <- data.frame(boot.fixed.fine = boot.fixed.fine)
+
+# Remove NA values
+bootf_results_df <- na.omit(bootf_results_df)
+
+# Calculate Confidence Intervals (2.5th and 97.5th percentiles)
+ci.diff <- quantile(bootf_results_df$boot.fixed.fine, probs = c(0.025, 0.975), na.rm = TRUE)
+low.q <- ci.diff[1]
+upp.q <- ci.diff[2]
+
+# Calculate the trimmed mean of the bootstrap estimates (20% trimming)
+mean.diff <- mean(boot.fixed.fine, trim = 0.2, na.rm = TRUE)
+
+# Calculate the p-value for the observed mean difference
+pv.diff <- mean(abs(boot.fixed.fine) >= abs(mean.diff), na.rm = TRUE)
+
+# Display results
+cat("Confidence Intervals: ", ci.diff, "\n")
+cat("Trimmed Mean: ", mean.diff, "\n")
+cat("P-value: ", pv.diff, "\n")
+
+```
+
+*Results from Fine bootstrap*
+Confidence Intervals:  0.9757557 2.206009 
+Trimmed Mean:  1.598533 
+P-value:  0.504 
+
+
+```{r Visualsisation of Fine Bootstrap}
+
+
+bootf_results_df <- data.frame(bootf_results_df = bootf_results_df)
+
+
+# Visualization of bootstrap correlation differences
+ggplot(bootf_results_df, aes(x = boot.fixed.fine)) +
+  geom_density(fill = "darkgreen", alpha = 0.5) + 
+  geom_vline(xintercept = mean.diff, linetype = "dashed", color = "black") + 
+  geom_segment(x = low.q, xend = upp.q, y = 0, yend = 0, 
+               lineend = "round", size = 4, colour = "purple") + 
+  
+  annotate(geom = "label", x = low.q + 0.1, y = 0.15, size = 5, 
+           colour = "black", fill = "purple", 
+           label = paste("L =", round(low.q, digits = 2))) + 
+  annotate(geom = "label", x = upp.q + 0.1, y = 0.15, size = 5, 
+           colour = "black", fill = "purple",
+           label = paste("U =", round(upp.q, digits = 2))) + 
+
+  labs(#title = "Bootstrapped Difference: Control vs. Experimental (Fine Postural Control)",
+       x = "Difference in Error Rate",
+       y = "Density")
+
+ggsave("fig2_boot_fine.jpg", width = 8, height = 6, dpi = 300)
+
+```
+
+
+
+*Gross Model* 
+
+
+```{r, warning=FALSE}
+
+set.seed(250)
+
+nboot <- 1000
+
+# Create a vector to store the bootstrapped estimates (Fixed effect for PosturalType)
+boot.fixed.gross <- numeric(nboot)
+
+# Run the bootstrap procedure
+for (i in 1:nboot) {
+  # Resample the data with replacement
+  samp.dat.gross <- dat_long_gross[sample(1:nrow(dat_long_gross), nrow(dat_long_gross), replace = TRUE), ]
+  
+  # Fit the GLMM model to the resampled data
+  model_gross <- lmer(Score ~ Condition + (1 | Participants), 
+                      data = samp.dat.gross)
+  
+  # Extract the fixed effect 
+  boot.fixed.gross[i] <- fixef(model_gross)[2]
+}
+
+# Convert the bootstrap results to a data frame
+bootg_results_df <- data.frame(boot.fixed.gross = boot.fixed.gross)
+
+# Remove NA values
+bootg_results_df <- na.omit(bootg_results_df)
+
+# Calculate Confidence Intervals (2.5th and 97.5th percentiles)
+ci.diff <- quantile(bootg_results_df$boot.fixed.gross, probs = c(0.025, 0.975), na.rm = TRUE)
+low.q <- ci.diff[1]
+upp.q <- ci.diff[2]
+
+# Calculate the trimmed mean of the bootstrap estimates (20% trimming)
+mean.diff <- mean(boot.fixed.gross, trim = 0.2, na.rm = TRUE)
+
+# Calculate the p-value for the observed mean difference
+pv.diff <- mean(abs(boot.fixed.gross) >= abs(mean.diff), na.rm = TRUE)
+
+# Display results
+cat("Confidence Intervals: ", ci.diff, "\n")
+cat("Trimmed Mean: ", mean.diff, "\n")
+cat("P-value: ", pv.diff, "\n")
+
+```
+*Results from Gross bootstrap*
+Confidence Intervals:  2.147033 3.833014 
+Trimmed Mean:  2.954041 
+P-value:  0.498 
+
+
+```{r Visualsisation of Gross Bootstrap}
+
+
+bootg_results_df <- data.frame(bootg_results_df = bootg_results_df)
+
+
+# Visualization of bootstrap correlation differences
+ggplot(bootg_results_df, aes(x = boot.fixed.gross)) +
+  geom_density(fill = "orange", alpha = 0.5) + 
+  geom_vline(xintercept = mean.diff, linetype = "dashed", color = "black") + 
+  geom_segment(x = low.q, xend = upp.q, y = 0, yend = 0, 
+               lineend = "round", size = 4, colour = "purple") + 
+  
+  annotate(geom = "label", x = low.q + 0.1, y = 0.15, size = 5, 
+           colour = "black", fill = "purple", 
+           label = paste("L =", round(low.q, digits = 2))) + 
+  annotate(geom = "label", x = upp.q + 0.1, y = 0.15, size = 5, 
+           colour = "black", fill = "purple",
+           label = paste("U =", round(upp.q, digits = 2))) + 
+
+  labs(#title = "Bootstrapped Difference: Control vs. Experimental (Gross Postural Control)",
+       x = "Difference in error rate",
+       y = "Density")
+
+ggsave("fig3_boot_gross.jpg", width = 8, height = 6, dpi = 300)
+
+```
+
+
+
+
+
+**Hypothesis 2: The decrease in performance scores for fine postural control task will be greater than gross postural control task, when a cognitive task is introduced.**
+
+
+```{r, warning=FALSE}
+
+#calculating the difference between control and experimental conditons 
+dat_diff <- data %>%
+  mutate(
+    Fine_diff = FM_error - FC_error,
+    Gross_diff = GM_error - GC_error) %>%
+  select(Participants, Gross_diff, Fine_diff)
+
+
+# Reshape the data to long format
+data_long2 <- dat_diff %>%
+  gather(key = "PosturalType", value = "Difference", Fine_diff, Gross_diff) %>%
+  mutate(PosturalType = recode(PosturalType, 
+                               Fine_diff = "Fine", 
+                               Gross_diff = "Gross"))
+
+
+
+# GLMM to compare Fine vs. Gross differences
+model <- lmer(Difference ~ PosturalType + (1 | Participants), 
+               data = data_long2)  # Use binomial if the data is binary or proportions
+
+# View the model results
+summary(model)
+
+```
+```{r}
+ggplot(data_long2, aes(x = PosturalType, y = Difference, fill = PosturalType)) +
+  geom_violin(trim = FALSE, alpha = 0.5) +
+  geom_boxplot(width = .2, alpha = 0.9, outlier.shape = 16, outlier.colour = "red") +
+  geom_jitter(width = 0.2, alpha = 0.6) + 
+  scale_fill_manual(values = c("Fine" = "darkgreen", "Gross" = "orange")) +  
+  labs(#title = "Difference in Error Rates: Fine vs. Gross Postural Control",
+       x = "Postural Control Type",
+       y = "Difference in Error Rate") +
+  theme_minimal()
+
+ggsave("fig4_boot_gross.jpg", width = 8, height = 6, dpi = 300)
+
+```
+
+
+
+
+
+
+```{r, warning=FALSE}
+
+set.seed(250)
+
+nboot <- 1000
+
+# Create a vector to store the bootstrapped estimates (Fixed effect for PosturalType)
+boot.fixed.diff <- numeric(nboot)
+
+
+# Run the bootstrap procedure
+for (i in 1:nboot) {
+ 
+  samp.dat.boot <- data_long2[sample(1:nrow(data_long2), nrow(data_long2), replace = TRUE), ]
+  model <- lmer(Difference ~ PosturalType + (1 | Participants), 
+                 data = samp.dat.boot)
+  boot.fixed.diff[i] <- fixef(model)[2]  # [2] because PosturalType is the second fixed effect in the model
+}
+
+boot_results_df <- data.frame(boot.fixed.diff = boot.fixed.diff)
+boot_results_df <- boot_results_df[!is.na(boot_results_df$boot.fixed.diff), ]
+
+# Calculate Confidence Intervals (2.5th and 97.5th percentiles)
+ci.diff <- quantile(boot_results_df, probs = c(0.0025, 0.975), na.rm = TRUE)
+low.q <- ci.diff[1]
+upp.q <- ci.diff[2]
+
+# Calculate the trimmed mean of the bootstrap estimates (20% trimming)
+mean.diff <- mean(boot.fixed.diff, trim = 0.2, na.rm = TRUE)
+
+# Calculate the p-value for the observed mean difference
+pv.diff <- mean(abs(boot_results_df) >= abs(mean.diff), na.rm = TRUE)
+
+# Displaying the results
+cat("Confidence Intervals of difference between conditions Fine and Gross: ", low.q, " to ", upp.q, "\n")
+cat("Trimmed Mean of difference between conditions Fine and Gross: ", mean.diff, "\n")
+cat("P-value for the difference between conditions Fine and Gross: ", pv.diff, "\n")
+```
+*Results from the bootstrap comparing the difference between gross and fine movement*
+Confidence Intervals:  0.1194589  to  2.306991 
+Trimmed Mean:  1.364876 
+P-value:  0.494 
+
+```{r Visualsisation of Bootstrap}
+
+
+boot_results_df <- data.frame(boot_results_df = boot_results_df)
+
+
+# Visualization of bootstrap correlation differences
+ggplot(boot_results_df, aes(x = boot.fixed.diff)) +
+  geom_density(fill = "lightblue", alpha = 0.5) + 
+  geom_vline(xintercept = mean.diff, linetype = "dashed", color = "black") + 
+  geom_segment(x = low.q, xend = upp.q, y = 0, yend = 0, 
+               lineend = "round", size = 4, colour = "purple") + 
+  
+  annotate(geom = "label", x = low.q + 0.1, y = 0.15, size = 5, 
+           colour = "black", fill = "purple", 
+           label = paste("L =", round(low.q, digits = 2))) + 
+  annotate(geom = "label", x = upp.q + 0.1, y = 0.15, size = 5, 
+           colour = "black", fill = "purple",
+           label = paste("U =", round(upp.q, digits = 2))) + 
+
+  labs(#title = "Difference between Fine and Gross Bootstrap",
+       x = "Difference",
+       y = "Density")
+
+ggsave("fig5_boot_diff.jpg", width = 8, height = 6, dpi = 300)
+
+```
+
+
+
+
+
+**Exploratory Analysis**
+
+
+```{r, warning=FALSE}
+# GLMM with Gender included as an additional fixed effect
+fine_gender_model <- glmer(Error ~ TaskType * Gender + (1 | Participants), 
+                           data = data_long %>% filter(PosturalType == "Fine"), 
+                           family = gaussian)  # or binomial
+
+gross_gender_model <- glmer(Error ~ TaskType * Gender + (1 | Participants), 
+                            data = data_long %>% filter(PosturalType == "Gross"), 
+                            family = gaussian)  # or binomial
+
+# View results for both models
+summary(fine_gender_model)
+summary(gross_gender_model)
+
+```
+
+
+
+
+
+
+
+
+
+

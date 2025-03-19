@@ -1,0 +1,163 @@
+---
+title: "Dissertation wrangling"
+author: "2643018s"
+date: "2025-01-16"
+output: html_document
+---
+
+```{r}
+library("tidyverse")
+
+
+dat <- read_csv("task_error_data.csv") %>%
+ na.omit()
+```
+
+
+
+By running the Correltational matrix its possible to see that the data does not obide to parametric assumptions needed for further assessment 
+
+```{r Creating correltational visualisation}
+
+library("corrr")
+
+# Correlation matrix
+dat %>%
+  select(FC_error, GC_error, FM_error, GM_error) %>%
+  correlate() %>%
+  shave() %>%
+  fashion()
+
+# Visualization of matrix
+pairs(~ FC_error + GC_error + FM_error + GM_error, dat) 
+
+#The data doesn't adhere to parametric assumptions so do we need to simulate via replacement and then put into a correltational matrix, is this possible? 
+
+```
+
+```{r}
+
+set.seed(27)
+
+#Structuring data set for analysis
+dat.boot <- dat %>% 
+  select(-Age, -Sex, -Participants) %>% 
+  na.omit()
+
+
+
+## Running bootstrap 
+nboot <- 1000
+
+#Creating vector to store data
+boot.cor.diff <- numeric(nboot) #Need to solve this issue for the graph to work 
+
+for (i in 1:nboot) {
+   samp.dat.boot <- dat.boot[sample(1:nrow(dat.boot), nrow(dat.boot), replace = TRUE),]
+# Calculating correlations for resampled data
+cor.Fine <- cor(samp.dat.boot$FC_error, 
+                  samp.dat.boot$FM_error) #the difference between control and stroop task - Fine movement 
+cor.Gross <- cor(samp.dat.boot$GC_error,
+                  samp.dat.boot$GM_error) #the difference between control and stroop task - Gross movement
+# Difference in correlations
+  boot.cor.diff[i] <- cor.Fine - cor.Gross # comparing the difference between the control and stroop for both the Fine and gross postural tasks 
+ 
+  
+}
+
+# correlation differences to a data frame
+cor.diff.dat <- data.frame(boot.cor.diff = boot.cor.diff)
+cor.diff.dat <- cor.diff.dat[!is.na(cor.diff.dat)]  # Removes NA values
+
+
+# Calculating the confidence intervals 
+ci.diff.FvG <- quantile(cor.diff.dat, probs = c(.025, .975), na.rm = TRUE)
+
+low.q.FvG <- ci.diff.FvG[1]
+upp.q.FvG <- ci.diff.FvG[2]
+
+#Calculating trimmed means
+mean.diff.FvG <- mean(boot.cor.diff, trim = .2, na.rm = TRUE) #check where this could have gone wrong 
+
+#Calculating p-values 
+pv.diff.FvG <- mean(abs(cor.diff.dat) >- abs(mean.diff.FvG), trim = .2, na.rm = TRUE)
+
+
+
+#Displaying the results 
+cat("Confidence Intervals of difference between conditions Fine and Gross ostural control  ", ci.diff.FvG, "\n")
+cat("Means of difference between conditions Fine and Gross", mean.diff.FvG, "\n")
+cat("P value of difference between conditions Fine and Gross", pv.diff.FvG, "\n")
+
+```
+
+
+```{r Bootstrap visualisation}
+
+cor.diff.dat <- data.frame(boot.cor.diff = boot.cor.diff)
+
+
+## Visualization of MFG bootstrap correlation 
+ggplot(cor.diff.dat, aes(x = boot.cor.diff)) +
+  geom_density(fill = "darkblue", alpha = .3) + 
+  #vertical dashed line at the trimmed mean of the bootstrap correlation differences
+  geom_vline(xintercept = mean.diff.FvG, linetype = "dashed", color = "black") + 
+  # Draw a horizontal segment representing confidence interval 
+  geom_segment(x = low.q.FvG, xend = upp.q.FvG, y = 0, yend = 0, 
+               lineend = "round", size = 4, colour = "darkgreen") + 
+  annotate(geom = "label", x = low.q.FvG + .1, y = .15, size = 5, 
+           colour = "black", fill = "darkgreen", 
+           label = paste("L =", round(low.q.FvG, digits = 2))) + 
+  annotate(geom = "label", x = upp.q.FvG + .1, y = .15, size = 5, 
+           colour = "black", fill = "darkgreen",
+           label = paste("U =", round(upp.q.FvG, digits = 2))) + 
+  # Axis labels to the plot 
+  labs(title = "Difference between Fine and Gross Bootstrap Correlations",
+       x = "Difference in Correlations",
+       y = "Frequency")
+
+
+```
+
+```{r}
+summary(boot.cor.diff)
+hist(boot.cor.diff, breaks = 30, col = "blue", main = "Histogram of Correlation Differences")
+
+```
+
+
+
+
+
+```{r Genrealized Linear Mixed Effect Model}
+
+library(lme4)
+
+#Data Warangling 
+long_dat <- dat %>%
+  pivot_longer(cols = c(FC_error, GC_error, FM_error, GM_error),
+               names_to = "Condition",
+               values_to = "Error_Score")
+
+glmm_mod <- 
+  glmer(Error_Score ~ Condition + (1 | Participants), # Random effect: Participant
+  data = long_dat,
+  family = gaussian(link = "identity") # For continuous data
+)
+
+summary(glmm_mod)
+
+#Need to find a way of producing a p-value for this data
+
+```
+
+**Exploratory analysis** 
+
+```{r}
+
+```
+
+
+
+
+
